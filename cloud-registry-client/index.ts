@@ -1,6 +1,8 @@
 import * as assert from 'assert';
 import request from 'request-promise';
 
+export const PUBLIC_ENV = 'public';
+
 export interface IRegistryClientInitOption {
     url: string;
 }
@@ -13,6 +15,7 @@ export interface IRegistryOption {
     createdAt?: number;     // 创建时间
     refreshAt?: number;     //上次刷新时间
     status?: number;    // 1. 启用 0. 未启用 -1. 超时
+    env?: string;
 }
 
 
@@ -30,9 +33,10 @@ export class RegistryClient {
 
     async registry(options: IRegistryOption) {
         this.checkInit();
+        options = Object.assign({env: PUBLIC_ENV}, options);
         this.appInfo = options;
         if (!this.appInfo.id) {
-            this.appInfo.id = this.appInfo.name + '-' + this.appInfo.ip + '-' + this.appInfo.port
+            this.appInfo.id = this.appInfo.name + '-' + this.appInfo.ip + '-' + this.appInfo.port+'-'+this.appInfo.env
         }
         this.appInfo.createdAt = Date.now();
         this.appInfo.refreshAt = Date.now();
@@ -57,10 +61,14 @@ export class RegistryClient {
         }
         try {
             await request.post(this.url, {
-                body: this.appInfo
+                body: this.appInfo,
+                json: true,
             });
         } catch(err) {
-            return this.doRegistry(++tryNumber);
+            tryNumber = ++ tryNumber;
+            console.error(`registry service error, will to try the ${tryNumber} times: `, err);
+            await this.wiatter(tryNumber);
+            return this.doRegistry(tryNumber);
         }
     }
 
@@ -88,14 +96,33 @@ export class RegistryClient {
         await request.put(url);
     }
 
+    async getServices() :Promise<IRegistryOption[]>{
+        if (!this.appInfo) {
+            throw new Error("please call registry before!");
+        }
+        const url = this.getUrl('');
+        let services: IRegistryOption[] = await request.get(url, {});
+        services = services.filter( (service) => {
+            return service.status == 1 && service.env == this.appInfo!.env;
+        })
+        return services;
+    }
+
     private getUrl(endfix: string) {
         return this.url + '/' + endfix;
     }
 
-    checkInit() {
+    private checkInit() {
         assert.equal(this.isInit, true, "call init before call registry!")
     }
 
+    private wiatter(tryNumber: number) {
+        return new Promise( (resolve) => {
+            return setTimeout( () => {
+                resolve(true);
+            }, tryNumber * 10 * 1000);
+        });
+    }
 }
 
 const registryClient = new RegistryClient();
