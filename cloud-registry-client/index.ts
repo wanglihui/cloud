@@ -84,6 +84,7 @@ export class RegistryClient {
         //开始清理程序
         await request.delete(url, {
             body: this.appInfo,
+            json: true,
         });
         this.appInfo = undefined;
     }
